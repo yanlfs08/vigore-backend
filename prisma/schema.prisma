@@ -9,12 +9,181 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Modelo de teste para validarmos a conexão
-model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
+// --- ENUMS (Padronização dos dados) ---
 
-  @@map("users")
+enum TipoPermissao {
+  ADMIN
+  RECEPCAO
+  PRE_ATENDIMENTO
+  MEDICO
+}
+
+enum CanalCaptacao {
+  INDICACAO
+  MIDIA_SOCIAL
+  OUTROS
+}
+
+enum StatusPaciente {
+  ATIVO
+  INATIVO
+}
+
+enum StatusAgendamento {
+  PENDENTE
+  CONFIRMADO
+  CHEGOU
+  EM_ATENDIMENTO
+  CONCLUIDO
+  CANCELADO
+  NAO_COMPARECEU
+}
+
+enum TipoConsulta {
+  PRIMEIRA_CONSULTA
+  RETORNO
+}
+
+enum TipoDocumento {
+  ATESTADO_MEDICO
+  ATESTADO_COMPARECIMENTO
+  PEDIDO_EXAME
+}
+
+enum StatusDocumento {
+  GERADO
+  IMPRESSO
+  ASSINADO
+}
+
+// --- MODELS (Tabelas) ---
+
+// 1. Entidade: Usuário [cite: 56]
+model Usuario {
+  id              Int           @id @default(autoincrement())
+  nome_completo   String
+  email           String        @unique
+  senha_hash      String
+  tipo_permissao  TipoPermissao @default(RECEPCAO) //
+  crm             String?       // Nullable, apenas para médicos
+  telefone        String?
+  ativo           Boolean       @default(true)
+
+  data_criacao    DateTime      @default(now())
+  data_atualizacao DateTime     @updatedAt
+
+  // Relações
+  agendamentosMedico Agendamento[]  @relation("MedicoAgendamento")
+  documentosMedico   Documento[]    @relation("MedicoDocumento")
+
+  @@map("usuarios")
+}
+
+// 2. Entidade: Paciente
+model Paciente {
+  id                     Int            @id @default(autoincrement())
+  nome_completo          String
+  cpf                    String?        @unique
+  data_nascimento        DateTime?      @db.Date // Apenas data, sem hora
+  telefone_principal     String
+  telefone_secundario    String?
+  email                  String?
+  endereco               String?
+
+  data_primeira_consulta DateTime       @db.Date // Obrigatório [cite: 58]
+  canal_captacao         CanalCaptacao?
+  status                 StatusPaciente @default(ATIVO)
+  observacoes_gerais     String?        @db.Text
+
+  data_criacao           DateTime       @default(now())
+  data_atualizacao       DateTime       @updatedAt
+
+  // Relações
+  agendamentos Agendamento[]
+  documentos   Documento[]
+
+  @@map("pacientes")
+}
+
+// 4. Entidade: Procedimento
+// Criada antes de Agendamento pois é dependência (FK)
+model Procedimento {
+  id                    Int      @id @default(autoincrement())
+  nome                  String   @unique
+  descricao             String?  @db.Text
+  duracao_media_minutos Int?
+  valor                 Decimal? @db.Decimal(10, 2)
+  ativo                 Boolean  @default(true)
+
+  data_criacao          DateTime @default(now())
+  data_atualizacao      DateTime @updatedAt
+
+  // Relações
+  agendamentos Agendamento[]
+
+  @@map("procedimentos")
+}
+
+// 3. Entidade: Agendamento [cite: 58]
+model Agendamento {
+  id              Int               @id @default(autoincrement())
+
+  // Foreign Keys
+  id_paciente     Int
+  paciente        Paciente          @relation(fields: [id_paciente], references: [id])
+
+  id_medico       Int
+  medico          Usuario           @relation("MedicoAgendamento", fields: [id_medico], references: [id])
+
+  id_procedimento_principal Int?
+  procedimento    Procedimento?     @relation(fields: [id_procedimento_principal], references: [id])
+
+  data_hora_inicio   DateTime
+  data_hora_fim      DateTime?      // Ou calculado via duração
+  motivo_consulta    String?        @db.Text
+
+  status_agendamento StatusAgendamento @default(PENDENTE)
+  tipo_consulta      TipoConsulta?
+
+  data_criacao       DateTime       @default(now())
+  data_atualizacao   DateTime       @updatedAt
+
+  @@map("agendamentos")
+}
+
+// 5. Entidade: Documento [cite: 60]
+model Documento {
+  id              Int             @id @default(autoincrement())
+
+  id_paciente     Int
+  paciente        Paciente        @relation(fields: [id_paciente], references: [id])
+
+  id_medico       Int?            // Nullable para atestado de comparecimento (recepção)
+  medico          Usuario?        @relation("MedicoDocumento", fields: [id_medico], references: [id])
+
+  tipo_documento  TipoDocumento
+  conteudo_gerado String          @db.Text // HTML ou Link PDF
+
+  // O Pulo do Gato: JSONB para dados flexíveis (exames, dias de repouso)
+  dados_especificos_json Json?
+
+  status          StatusDocumento? @default(GERADO)
+  data_geracao    DateTime         @default(now())
+
+  @@map("documentos")
+}
+
+// 6. Entidade: ModeloDocumento
+model ModeloDocumento {
+  id                Int           @id @default(autoincrement())
+  nome_modelo       String        @unique
+  tipo_documento    TipoDocumento
+  conteudo_template String        @db.Text
+
+  dados_padrao_json Json?         // Ex: Lista de exames padrão para um checkup hormonal
+
+  data_criacao      DateTime      @default(now())
+  data_atualizacao  DateTime      @updatedAt
+
+  @@map("modelos_documentos")
 }
