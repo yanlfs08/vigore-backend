@@ -1,0 +1,52 @@
+name: Deploy Backend Vigore
+
+on:
+  push:
+    branches: ['main'] # Só dispara quando subir para a main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            # 1. Instalar Node/NVM caso o shell não carregue (garantia)
+            export NVM_DIR=~/.nvm
+            source ~/.nvm/nvm.sh
+
+            # 2. Navegar até a pasta do projeto (criaremos essa pasta manualmente na VPS na 1ª vez)
+            cd /home/vigore_admin/vigore-backend
+
+            # 3. Puxar as últimas alterações do Git
+            git pull origin main
+
+            # 4. Instalar dependências
+            npm install
+
+            # 5. Gerar o Cliente do Prisma (Atualiza tipagem com o banco)
+            npx prisma generate
+
+            # 6. Rodar Migrations no Banco de Dados (Seguro: Roda DENTRO da VPS)
+            # Como o banco é local na VPS, o GitHub Actions não consegue acessá-lo,
+            # então o comando tem que rodar aqui dentro mesmo via SSH.
+            npx prisma migrate deploy
+
+            # 7. Buildar o projeto (TypeScript -> JavaScript)
+            npm run build
+
+            # 8. Reiniciar o processo no PM2
+            # Se for a primeira vez, o comando falha, então usamos || true para não quebrar o deploy
+            pm2 restart vigore-api || pm2 start dist/server.js --name vigore-api
+
+            # 9. Salvar estado do PM2 para voltar se o servidor reiniciar
+            pm2 save
