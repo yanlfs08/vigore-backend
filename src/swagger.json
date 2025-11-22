@@ -1,0 +1,317 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "API Vigore", "version": "1.0.0" },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  },
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Login no sistema",
+        "tags": ["Autenticação"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string", "example": "admin@vigore.com.br" },
+                  "password": { "type": "string", "example": "admin123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Token gerado" } }
+      }
+    },
+    "/usuarios": {
+      "get": {
+        "summary": "Lista usuários",
+        "tags": ["Usuários"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Lista" } }
+      },
+      "post": {
+        "summary": "Cria usuário",
+        "tags": ["Usuários"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome_completo": { "type": "string" },
+                  "email": { "type": "string" },
+                  "password": { "type": "string" },
+                  "tipo_permissao": { "type": "string", "enum": ["ADMIN", "MEDICO", "RECEPCAO"] },
+                  "crm": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Criado" } }
+      }
+    },
+    "/usuarios/{id}": {
+      "put": {
+        "summary": "Atualizar Usuário (Admin)",
+        "tags": ["Usuários"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome_completo": { "type": "string" },
+                  "email": { "type": "string" },
+                  "password": { "type": "string", "description": "Envie apenas se quiser trocar a senha" },
+                  "tipo_permissao": { "type": "string", "enum": ["ADMIN", "MEDICO", "RECEPCAO"] },
+                  "crm": { "type": "string" },
+                  "telefone": { "type": "string" },
+                  "ativo": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Usuário atualizado" } }
+      }
+    },
+    "/usuarios/alterar-senha": {
+      "patch": {
+        "summary": "Trocar minha senha",
+        "tags": ["Usuários"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["senha_antiga", "nova_senha"],
+                "properties": {
+                  "senha_antiga": { "type": "string", "example": "123456" },
+                  "nova_senha": { "type": "string", "example": "novaSenhaForte123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Senha alterada com sucesso" },
+          "401": { "description": "Senha antiga incorreta" }
+        }
+      }
+    },
+    "/pacientes": {
+      "get": {
+        "summary": "Listar/Buscar Pacientes",
+        "tags": ["Pacientes"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "in": "query", "name": "search", "schema": { "type": "string" }, "description": "Nome ou CPF" }
+        ],
+        "responses": { "200": { "description": "Lista de pacientes" } }
+      },
+      "post": {
+        "summary": "Cadastrar Paciente",
+        "tags": ["Pacientes"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["nome_completo", "telefone_principal", "data_primeira_consulta"],
+                "properties": {
+                  "nome_completo": { "type": "string" },
+                  "cpf": { "type": "string" },
+                  "telefone_principal": { "type": "string" },
+                  "email": { "type": "string" },
+                  "data_nascimento": { "type": "string", "format": "date" },
+                  "data_primeira_consulta": { "type": "string", "format": "date" },
+                  "canal_captacao": { "type": "string", "enum": ["INDICACAO", "MIDIA_SOCIAL", "OUTROS"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Paciente criado" } }
+      }
+    },
+    "/agendamentos": {
+      "get": {
+        "summary": "Ver Agenda",
+        "tags": ["Agendamentos"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "in": "query", "name": "start_date", "schema": { "type": "string", "format": "date" } },
+          { "in": "query", "name": "id_medico", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Agenda retornada" } }
+      },
+      "post": {
+        "summary": "Criar Agendamento",
+        "tags": ["Agendamentos"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id_paciente", "id_medico", "data_hora_inicio"],
+                "properties": {
+                  "id_paciente": { "type": "integer" },
+                  "id_medico": { "type": "integer" },
+                  "id_procedimento_principal": { "type": "integer", "default": 1 },
+                  "data_hora_inicio": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2024-11-25T10:00:00.000Z"
+                  },
+                  "motivo_consulta": { "type": "string" },
+                  "tipo_consulta": { "type": "string", "enum": ["PRIMEIRA_CONSULTA", "RETORNO"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Agendado" } }
+      }
+    },
+    "/documentos": {
+      "post": {
+        "summary": "Gerar Documento (Atestado/Receita)",
+        "tags": ["Documentos"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id_paciente", "id_medico", "tipo_documento", "conteudo_gerado"],
+                "properties": {
+                  "id_paciente": { "type": "integer" },
+                  "id_medico": { "type": "integer" },
+                  "tipo_documento": { "type": "string", "enum": ["ATESTADO_MEDICO", "RECEITA", "PEDIDO_EXAME"] },
+                  "conteudo_gerado": { "type": "string", "example": "Atesto que João precisa de 3 dias de repouso." },
+                  "dados_json": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Documento salvo" } }
+      }
+    },
+    "/modelos-documentos": {
+      "get": {
+        "summary": "Listar Modelos de Documentos",
+        "tags": ["Documentos - Configuração"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tipo",
+            "schema": { "type": "string", "enum": ["ATESTADO_MEDICO", "RECEITA", "PEDIDO_EXAME"] }
+          }
+        ],
+        "responses": { "200": { "description": "Lista de modelos" } }
+      },
+      "post": {
+        "summary": "Criar Novo Modelo (Admin)",
+        "tags": ["Documentos - Configuração"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["nome_modelo", "tipo_documento", "conteudo_template"],
+                "properties": {
+                  "nome_modelo": { "type": "string", "example": "Receita Simples - Gripe" },
+                  "tipo_documento": { "type": "string", "enum": ["ATESTADO_MEDICO", "RECEITA", "PEDIDO_EXAME"] },
+                  "conteudo_template": {
+                    "type": "string",
+                    "example": "Uso Oral:\n1. Dipirona 500mg --- 1cp a cada 6h se dor."
+                  },
+                  "dados_padrao_json": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Modelo criado" } }
+      }
+    },
+    "/pacientes/{id_paciente}/documentos": {
+      "get": {
+        "summary": "Histórico de Documentos do Paciente",
+        "tags": ["Documentos"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "path", "name": "id_paciente", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Lista de documentos" } }
+      }
+    },
+    "/agenda/padrao": {
+      "post": {
+        "summary": "Definir dias de trabalho recorrentes",
+        "tags": ["Agenda - Configuração"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id_medico": { "type": "integer" },
+                  "horarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "dia_semana": { "type": "integer", "description": "0=Dom, 1=Seg... 6=Sab" },
+                        "horario_inicio": { "type": "string", "example": "08:00" },
+                        "horario_fim": { "type": "string", "example": "18:00" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Salvo" } }
+      }
+    },
+    "/agenda/bloqueios": {
+      "post": {
+        "summary": "Bloquear horário (Férias/Feriado)",
+        "tags": ["Agenda - Configuração"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id_medico": { "type": "integer" },
+                  "data_inicio": { "type": "string", "format": "date-time" },
+                  "data_fim": { "type": "string", "format": "date-time" },
+                  "motivo": { "type": "string", "example": "Congresso Médico" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Bloqueio criado" } }
+      }
+    }
+  }
+}

@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,13 +7,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- ENUMS (Padronização dos dados) ---
-
 enum TipoPermissao {
   ADMIN
   RECEPCAO
   PRE_ATENDIMENTO
   MEDICO
+}
+
+model Usuario {
+  id              Int           @id @default(autoincrement())
+  nome_completo   String
+  email           String        @unique
+  senha_hash      String
+  tipo_permissao  TipoPermissao @default(RECEPCAO)
+  crm             String?       // Apenas para médicos
+  telefone        String?
+  ativo           Boolean       @default(true)
+
+  data_criacao    DateTime      @default(now())
+  data_atualizacao DateTime     @updatedAt
+
+  mensagensEnviadas   Mensagem[] @relation("Remetente")
+  mensagensRecebidas  Mensagem[] @relation("Destinatario")
+
+  agendamentos    Agendamento[]
+  documentos      Documento[]
+
+  agendaPadrao    AgendaPadrao[]
+  bloqueios       BloqueioAgenda[]
+
+
+  @@map("usuarios")
 }
 
 enum CanalCaptacao {
@@ -27,6 +49,29 @@ enum CanalCaptacao {
 enum StatusPaciente {
   ATIVO
   INATIVO
+}
+
+model Paciente {
+  id                     Int            @id @default(autoincrement())
+  nome_completo          String
+  cpf                    String?        @unique
+  data_nascimento        DateTime?      @db.Date
+  telefone_principal     String
+  telefone_secundario    String?
+  email                  String?
+  endereco               String?
+
+  data_primeira_consulta DateTime       @db.Date
+  canal_captacao         CanalCaptacao?
+  status                 StatusPaciente @default(ATIVO)
+  observacoes_gerais     String?        @db.Text
+
+  data_criacao           DateTime       @default(now())
+  data_atualizacao       DateTime       @updatedAt
+  agendamentos           Agendamento[]
+  documentos              Documento[]
+
+  @@map("pacientes")
 }
 
 enum StatusAgendamento {
@@ -44,69 +89,6 @@ enum TipoConsulta {
   RETORNO
 }
 
-enum TipoDocumento {
-  ATESTADO_MEDICO
-  ATESTADO_COMPARECIMENTO
-  PEDIDO_EXAME
-}
-
-enum StatusDocumento {
-  GERADO
-  IMPRESSO
-  ASSINADO
-}
-
-// --- MODELS (Tabelas) ---
-
-// 1. Entidade: Usuário [cite: 56]
-model Usuario {
-  id              Int           @id @default(autoincrement())
-  nome_completo   String
-  email           String        @unique
-  senha_hash      String
-  tipo_permissao  TipoPermissao @default(RECEPCAO) //
-  crm             String?       // Nullable, apenas para médicos
-  telefone        String?
-  ativo           Boolean       @default(true)
-
-  data_criacao    DateTime      @default(now())
-  data_atualizacao DateTime     @updatedAt
-
-  // Relações
-  agendamentosMedico Agendamento[]  @relation("MedicoAgendamento")
-  documentosMedico   Documento[]    @relation("MedicoDocumento")
-
-  @@map("usuarios")
-}
-
-// 2. Entidade: Paciente
-model Paciente {
-  id                     Int            @id @default(autoincrement())
-  nome_completo          String
-  cpf                    String?        @unique
-  data_nascimento        DateTime?      @db.Date // Apenas data, sem hora
-  telefone_principal     String
-  telefone_secundario    String?
-  email                  String?
-  endereco               String?
-
-  data_primeira_consulta DateTime       @db.Date // Obrigatório [cite: 58]
-  canal_captacao         CanalCaptacao?
-  status                 StatusPaciente @default(ATIVO)
-  observacoes_gerais     String?        @db.Text
-
-  data_criacao           DateTime       @default(now())
-  data_atualizacao       DateTime       @updatedAt
-
-  // Relações
-  agendamentos Agendamento[]
-  documentos   Documento[]
-
-  @@map("pacientes")
-}
-
-// 4. Entidade: Procedimento
-// Criada antes de Agendamento pois é dependência (FK)
 model Procedimento {
   id                    Int      @id @default(autoincrement())
   nome                  String   @unique
@@ -124,22 +106,21 @@ model Procedimento {
   @@map("procedimentos")
 }
 
-// 3. Entidade: Agendamento [cite: 58]
 model Agendamento {
   id              Int               @id @default(autoincrement())
 
-  // Foreign Keys
+  // Chaves Estrangeiras
   id_paciente     Int
   paciente        Paciente          @relation(fields: [id_paciente], references: [id])
 
   id_medico       Int
-  medico          Usuario           @relation("MedicoAgendamento", fields: [id_medico], references: [id])
+  medico          Usuario           @relation(fields: [id_medico], references: [id])
 
   id_procedimento_principal Int?
   procedimento    Procedimento?     @relation(fields: [id_procedimento_principal], references: [id])
 
   data_hora_inicio   DateTime
-  data_hora_fim      DateTime?      // Ou calculado via duração
+  data_hora_fim      DateTime?
   motivo_consulta    String?        @db.Text
 
   status_agendamento StatusAgendamento @default(PENDENTE)
@@ -151,39 +132,94 @@ model Agendamento {
   @@map("agendamentos")
 }
 
-// 5. Entidade: Documento [cite: 60]
+enum TipoDocumento {
+  ATESTADO_MEDICO
+  ATESTADO_COMPARECIMENTO
+  PEDIDO_EXAME
+  RECEITA
+}
+
 model Documento {
   id              Int             @id @default(autoincrement())
 
   id_paciente     Int
   paciente        Paciente        @relation(fields: [id_paciente], references: [id])
 
-  id_medico       Int?            // Nullable para atestado de comparecimento (recepção)
-  medico          Usuario?        @relation("MedicoDocumento", fields: [id_medico], references: [id])
+  id_medico       Int
+  medico          Usuario         @relation(fields: [id_medico], references: [id])
 
   tipo_documento  TipoDocumento
-  conteudo_gerado String          @db.Text // HTML ou Link PDF
 
-  // O Pulo do Gato: JSONB para dados flexíveis (exames, dias de repouso)
+  // O texto final gerado (HTML ou Markdown)
+  conteudo_gerado String          @db.Text
+
+  // Dados variáveis em JSON (ex: lista de remédios, dias de repouso) [cite: 61]
   dados_especificos_json Json?
 
-  status          StatusDocumento? @default(GERADO)
   data_geracao    DateTime         @default(now())
 
   @@map("documentos")
 }
 
-// 6. Entidade: ModeloDocumento
 model ModeloDocumento {
   id                Int           @id @default(autoincrement())
-  nome_modelo       String        @unique
+  nome_modelo       String        @unique // Ex: "Atestado Padrão", "Receita Simples"
   tipo_documento    TipoDocumento
   conteudo_template String        @db.Text
 
-  dados_padrao_json Json?         // Ex: Lista de exames padrão para um checkup hormonal
+  // Ex: Lista padrão de exames para um checkup [cite: 62]
+  dados_padrao_json Json?
 
+  ativo             Boolean       @default(true)
   data_criacao      DateTime      @default(now())
   data_atualizacao  DateTime      @updatedAt
 
   @@map("modelos_documentos")
+}
+
+model Mensagem {
+  id          Int      @id @default(autoincrement())
+  conteudo    String   @db.Text
+  lida        Boolean  @default(false)
+
+  remetenteId Int
+  remetente   Usuario  @relation("Remetente", fields: [remetenteId], references: [id])
+
+  destinatarioId Int
+  destinatario   Usuario @relation("Destinatario", fields: [destinatarioId], references: [id])
+
+  data_envio  DateTime @default(now())
+
+  @@map("mensagens")
+}
+
+model AgendaPadrao {
+  id              Int      @id @default(autoincrement())
+
+  id_medico       Int
+  medico          Usuario  @relation(fields: [id_medico], references: [id])
+
+  dia_semana      Int      // 0 a 6
+  horario_inicio  String   // Ex: "08:00"
+  horario_fim     String   // Ex: "18:00"
+
+  // Se quiser definir intervalo de almoço fixo, poderia adicionar aqui,
+  // mas vamos manter simples por enquanto.
+
+  @@map("agendas_padrao")
+}
+
+model BloqueioAgenda {
+  id              Int      @id @default(autoincrement())
+
+  id_medico       Int
+  medico          Usuario  @relation(fields: [id_medico], references: [id])
+
+  data_inicio     DateTime // Ex: 2024-12-25 00:00
+  data_fim        DateTime // Ex: 2024-12-25 23:59
+  motivo          String?  // Ex: "Natal", "Congresso", "Folga"
+
+  data_criacao    DateTime @default(now())
+
+  @@map("bloqueios_agenda")
 }
